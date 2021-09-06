@@ -34,28 +34,33 @@ impl Maper for Mapers {
                 wc.insert(i, 1);
             }
         }
+        let mut list0 = Vec::new();
+        let mut list1 = Vec::new();
+        let mut list2 = Vec::new();
 
         for i in wc {
             let t = i.0.as_bytes();
             let fi_num = (t[0] - 97) % 26;
             if fi_num <= 9 {
-                self.send(0, (&i.0.to_string(), i.1))?;
+                list0.push(i);
             } else if fi_num <= 18 {
-                self.send(1, (&i.0.to_string(), i.1))?;
+                list1.push(i);
             } else {
-                self.send(2, (&i.0.to_string(), i.1))?;
+                list2.push(i);
             }
         }
-
+        self.send(0, list0)?;
+        self.send(1, list1)?;
+        self.send(2, list2)?;
         Ok(())
     }
-    fn send(&self, id: u32, entry: (&String, i32)) -> Result<(), Box<dyn Error>> {
+    fn send(&self, id: u32, list: Vec<(&str, i32)>) -> Result<(), Box<dyn Error>> {
         let file = current_dir()?.join(format!("{}-{}", id, self.id));
         if !file.exists() {
             File::create(&file)?;
         }
         let mut buffer = OpenOptions::new().append(true).open(&file)?;
-        let entry = serde_json::to_string(&entry)?;
+        let entry = serde_json::to_string(&list)?;
         buffer.write_all(entry.as_bytes())?;
         buffer.flush()?;
 
@@ -77,7 +82,12 @@ impl Reducer for Reducers {
         let mut list = Vec::new();
         for entry in fs::read_dir(&path)? {
             let entry = entry?.path();
-            if entry.starts_with(format!("{}", self.id)) {
+            let file = match entry.file_name() {
+                Some(x) => x,
+                _ => continue,
+            };
+            let file = file.to_str().unwrap();
+            if file.starts_with(format!("{}", self.id).as_str()) {
                 list.push(entry);
             }
         }
@@ -111,4 +121,13 @@ impl Reducer for Reducers {
         Ok(())
     }
 }
-fn main() {}
+fn main() -> Result<(), Box<dyn Error>> {
+    let file = current_dir()?.join("many_books.txt");
+
+    let maper = Mapers { id: 1, file: file };
+    maper.map()?;
+    let reduce = Reducers { id: 1 };
+    reduce.reduce()?;
+
+    Ok(())
+}
